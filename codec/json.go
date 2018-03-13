@@ -8,11 +8,13 @@ import (
 	"github.com/funny/link"
 )
 
+//协议基本信息
 type JsonProtocol struct {
-	types map[string]reflect.Type
-	names map[reflect.Type]string
+	types map[string]reflect.Type //名字-反射类型
+	names map[reflect.Type]string //反射类型-名字
 }
 
+//新建一个协议
 func Json() *JsonProtocol {
 	return &JsonProtocol{
 		types: make(map[string]reflect.Type),
@@ -20,6 +22,7 @@ func Json() *JsonProtocol {
 	}
 }
 
+//注册一个基本的类型
 func (j *JsonProtocol) Register(t interface{}) {
 	rt := reflect.TypeOf(t)
 	if rt.Kind() == reflect.Ptr {
@@ -30,6 +33,7 @@ func (j *JsonProtocol) Register(t interface{}) {
 	j.names[rt] = name
 }
 
+//按照名字注册基本类型
 func (j *JsonProtocol) RegisterName(name string, t interface{}) {
 	rt := reflect.TypeOf(t)
 	if rt.Kind() == reflect.Ptr {
@@ -39,6 +43,7 @@ func (j *JsonProtocol) RegisterName(name string, t interface{}) {
 	j.names[rt] = name
 }
 
+//通过JsonProtocol创建一个新的link.Codec
 func (j *JsonProtocol) NewCodec(rw io.ReadWriter) (link.Codec, error) {
 	codec := &jsonCodec{
 		p:       j,
@@ -49,25 +54,29 @@ func (j *JsonProtocol) NewCodec(rw io.ReadWriter) (link.Codec, error) {
 	return codec, nil
 }
 
+//in信息
 type jsonIn struct {
-	Head string
-	Body *json.RawMessage
+	Head string           // 头部信息
+	Body *json.RawMessage //原生的json串
 }
 
+//out信息
 type jsonOut struct {
-	Head string
+	Head string //头部信息
 	Body interface{}
 }
 
 type jsonCodec struct {
-	p       *JsonProtocol
-	closer  io.Closer
-	encoder *json.Encoder
-	decoder *json.Decoder
+	p       *JsonProtocol //协议
+	closer  io.Closer     //关闭
+	encoder *json.Encoder //编码
+	decoder *json.Decoder //解码
 }
 
+//接收信息，然后解压到body里面
 func (c *jsonCodec) Receive() (interface{}, error) {
 	var in jsonIn
+	//解压消息
 	err := c.decoder.Decode(&in)
 	if err != nil {
 		return nil, err
@@ -78,6 +87,7 @@ func (c *jsonCodec) Receive() (interface{}, error) {
 			body = reflect.New(t).Interface()
 		}
 	}
+	//解压信息
 	err = json.Unmarshal(*in.Body, &body)
 	if err != nil {
 		return nil, err
@@ -85,6 +95,7 @@ func (c *jsonCodec) Receive() (interface{}, error) {
 	return body, nil
 }
 
+//发送信息，头部是消息的类型
 func (c *jsonCodec) Send(msg interface{}) error {
 	var out jsonOut
 	t := reflect.TypeOf(msg)
@@ -98,6 +109,7 @@ func (c *jsonCodec) Send(msg interface{}) error {
 	return c.encoder.Encode(&out)
 }
 
+//关闭jsonCodec
 func (c *jsonCodec) Close() error {
 	if c.closer != nil {
 		return c.closer.Close()
