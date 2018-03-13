@@ -6,31 +6,32 @@ import (
 	"sync/atomic"
 )
 
+//session关闭，session阻塞的错误
 var SessionClosedError = errors.New("Session Closed")
 var SessionBlockedError = errors.New("Session Blocked")
 
+//全局的sessionid
 var globalSessionId uint64
 
-//真正的session处理
+//session类型
 type Session struct {
-	id        uint64
-	codec     Codec
-	manager   *Manager
-	sendChan  chan interface{} //发送数据
-	recvMutex sync.Mutex
-	sendMutex sync.RWMutex
+	id        uint64           //当前的id
+	codec     Codec            //Codec接口
+	manager   *Manager         //session管理器
+	sendChan  chan interface{} //发送的chan
+	recvMutex sync.Mutex       //接收锁
+	sendMutex sync.RWMutex     //发送锁
 
-	closeFlag          int32
-	closeChan          chan int
-	closeMutex         sync.Mutex
+	closeFlag          int32      //关闭标识
+	closeChan          chan int   //关闭chan
+	closeMutex         sync.Mutex //关闭锁
 	firstCloseCallback *closeCallback
 	lastCloseCallback  *closeCallback
 
-	State interface{}
+	State interface{} //状态
 }
 
-//新建一个客户端session
-//获取一个无manage的session处理器
+//新建一个session
 func NewSession(codec Codec, sendChanSize int) *Session {
 	return newSession(nil, codec, sendChanSize)
 }
@@ -41,43 +42,49 @@ func newSession(manager *Manager, codec Codec, sendChanSize int) *Session {
 		codec:     codec,
 		manager:   manager,
 		closeChan: make(chan int),
-		id:        atomic.AddUint64(&globalSessionId, 1), //获取session的id
+		id:        atomic.AddUint64(&globalSessionId, 1),
 	}
-	//获取接收的大小
 	if sendChanSize > 0 {
-		//新建一个sessionlop，如果是异步发送
 		session.sendChan = make(chan interface{}, sendChanSize)
 		go session.sendLoop()
 	}
 	return session
 }
 
+//获取id
 func (session *Session) ID() uint64 {
 	return session.id
 }
 
+//是否关闭
 func (session *Session) IsClosed() bool {
 	return atomic.LoadInt32(&session.closeFlag) == 1
 }
 
+//关闭session
 func (session *Session) Close() error {
+	//关闭session
 	if atomic.CompareAndSwapInt32(&session.closeFlag, 0, 1) {
 		close(session.closeChan)
 
 		if session.sendChan != nil {
+			//
 			session.sendMutex.Lock()
-			close(session.sendChan)
+			close(session.sendChan) //关闭sendchan
+			//如果codec是ClearSendChan
 			if clear, ok := session.codec.(ClearSendChan); ok {
 				clear.ClearSendChan(session.sendChan)
 			}
 			session.sendMutex.Unlock()
 		}
-
+		//关闭codec
 		err := session.codec.Close()
-
+		//删除当前session
 		go func() {
+			//关闭的回调函数
 			session.invokeCloseCallbacks()
 
+			//移除这个session
 			if session.manager != nil {
 				session.manager.delSession(session)
 			}
@@ -87,6 +94,7 @@ func (session *Session) Close() error {
 	return SessionClosedError
 }
 
+//获取当前的Codec
 func (session *Session) Codec() Codec {
 	return session.codec
 }
@@ -96,7 +104,6 @@ func (session *Session) Receive() (interface{}, error) {
 	session.recvMutex.Lock()
 	defer session.recvMutex.Unlock()
 
-	//通过codec接收数据
 	msg, err := session.codec.Receive()
 	if err != nil {
 		session.Close()
@@ -104,18 +111,18 @@ func (session *Session) Receive() (interface{}, error) {
 	return msg, err
 }
 
-//不断的从chan里面读取数据，然后通过codec发送数据
+//发送loop
 func (session *Session) sendLoop() {
 	defer session.Close()
-	//1 不停的从session.sendChan里面获取数据
-	//2 通过sendChan发送数据
 	for {
 		select {
+
 		case msg, ok := <-session.sendChan:
+			//接收消息失败，或者发送失败就返回
 			if !ok || session.codec.Send(msg) != nil {
 				return
 			}
-		case <-session.closeChan:
+		case <-session.closeChan: //关闭chan
 			return
 		}
 	}
@@ -123,33 +130,28 @@ func (session *Session) sendLoop() {
 
 //发送数据
 func (session *Session) Send(msg interface{}) error {
-
-	//如果sendChan为空
+	//直接发送的情况
 	if session.sendChan == nil {
-		//是否关闭
 		if session.IsClosed() {
 			return SessionClosedError
 		}
 
 		session.sendMutex.Lock()
 		defer session.sendMutex.Unlock()
-		//通过codec的send发送数据
-		//直接接收和发送
+		//直接发送
 		err := session.codec.Send(msg)
 		if err != nil {
 			session.Close()
 		}
 		return err
 	}
-	//读锁
+
 	session.sendMutex.RLock()
-	//session是否关闭，关闭返回错误
 	if session.IsClosed() {
 		session.sendMutex.RUnlock()
 		return SessionClosedError
 	}
-
-	//发送数据到sendChan
+	//把数据写入，否则报阻塞错误
 	select {
 	case session.sendChan <- msg:
 		session.sendMutex.RUnlock()
@@ -161,6 +163,7 @@ func (session *Session) Send(msg interface{}) error {
 	}
 }
 
+//关闭时的回调
 type closeCallback struct {
 	Handler interface{}
 	Key     interface{}
@@ -168,6 +171,7 @@ type closeCallback struct {
 	Next    *closeCallback
 }
 
+//新增时的回调
 func (session *Session) AddCloseCallback(handler, key interface{}, callback func()) {
 	if session.IsClosed() {
 		return
@@ -186,6 +190,7 @@ func (session *Session) AddCloseCallback(handler, key interface{}, callback func
 	session.lastCloseCallback = newItem
 }
 
+//关闭时的回调
 func (session *Session) RemoveCloseCallback(handler, key interface{}) {
 	if session.IsClosed() {
 		return
@@ -210,6 +215,7 @@ func (session *Session) RemoveCloseCallback(handler, key interface{}) {
 	}
 }
 
+//调用时的回调
 func (session *Session) invokeCloseCallbacks() {
 	session.closeMutex.Lock()
 	defer session.closeMutex.Unlock()

@@ -7,31 +7,30 @@ import (
 	"time"
 )
 
-//协议接口
+//定义协议类型接口，通过一个读写类型，获取一个接口返回一个Codec
 type Protocol interface {
 	NewCodec(rw io.ReadWriter) (Codec, error)
 }
 
-//协议方法
+//定义一个ProtocolFunc类型，调用它之后返回一个Codec
 type ProtocolFunc func(rw io.ReadWriter) (Codec, error)
 
 func (pf ProtocolFunc) NewCodec(rw io.ReadWriter) (Codec, error) {
 	return pf(rw)
 }
 
-//codec 接口：接收，发送，关闭
+//接收，发送，关闭
 type Codec interface {
 	Receive() (interface{}, error)
 	Send(interface{}) error
 	Close() error
 }
 
-//处理读的chan
 type ClearSendChan interface {
-	ClearSendChan(<-chan interface{})
+	ClearSendChan(<-chan interface{}) //接收一个读的chan
 }
 
-//获取一个Server
+//新建一个server
 func Listen(network, address string, protocol Protocol, sendChanSize int, handler Handler) (*Server, error) {
 	listener, err := net.Listen(network, address)
 	if err != nil {
@@ -40,6 +39,7 @@ func Listen(network, address string, protocol Protocol, sendChanSize int, handle
 	return NewServer(listener, protocol, sendChanSize, handler), nil
 }
 
+//新建一个session
 func Dial(network, address string, protocol Protocol, sendChanSize int) (*Session, error) {
 	conn, err := net.Dial(network, address)
 	if err != nil {
@@ -52,6 +52,7 @@ func Dial(network, address string, protocol Protocol, sendChanSize int) (*Sessio
 	return NewSession(codec, sendChanSize), nil
 }
 
+//新建一个超时的session
 func DialTimeout(network, address string, timeout time.Duration, protocol Protocol, sendChanSize int) (*Session, error) {
 	conn, err := net.DialTimeout(network, address, timeout)
 	if err != nil {
@@ -64,7 +65,7 @@ func DialTimeout(network, address string, timeout time.Duration, protocol Protoc
 	return NewSession(codec, sendChanSize), nil
 }
 
-//获取连接的net.Conn
+//获取连接
 func Accept(listener net.Listener) (net.Conn, error) {
 	var tempDelay time.Duration
 	for {

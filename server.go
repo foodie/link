@@ -2,30 +2,32 @@ package link
 
 import "net"
 
-//Server的基本类型
+//服务的struct
 type Server struct {
-	manager      *Manager     //session管理器
-	listener     net.Listener //监听端口
-	protocol     Protocol     //协议
-	handler      Handler      //handler处理器
-	sendChanSize int          //发送chan的size
+	manager  *Manager     //一个manager
+	listener net.Listener //一个listener
+
+	protocol     Protocol //接收读写的协议接口
+	handler      Handler  //处理session的接口
+	sendChanSize int      //发送chan的大小
 }
 
-//处理session的函数
+//处理session
 type Handler interface {
-	HandleSession(*Session) //处理session
+	HandleSession(*Session)
 }
 
-//默认的处理函数
+//定义一个空函数
 var _ Handler = HandlerFunc(nil)
 
-//session处理器
-type HandlerFunc func(*Session) //任意的处理session的函数
+//定义处理session的函数类型
+type HandlerFunc func(*Session)
 
 func (f HandlerFunc) HandleSession(session *Session) {
 	f(session)
 }
 
+//新建一个server
 func NewServer(listener net.Listener, protocol Protocol, sendChanSize int, handler Handler) *Server {
 	return &Server{
 		manager:      NewManager(),
@@ -36,37 +38,40 @@ func NewServer(listener net.Listener, protocol Protocol, sendChanSize int, handl
 	}
 }
 
+//返回server
 func (server *Server) Listener() net.Listener {
 	return server.listener
 }
 
+//监听服务
 func (server *Server) Serve() error {
 	for {
-		//获取net.Conn
 		conn, err := Accept(server.listener)
 		if err != nil {
 			return err
 		}
-		//发起一个协成处理结果
+
 		go func() {
-			//使用protocol获取一个codec，主要用来读写数据
+			//返回一个Codec接口类型
 			codec, err := server.protocol.NewCodec(conn)
 			if err != nil {
 				conn.Close()
 				return
 			}
-			//对当前连接新建一个session
+			//新建一个session
 			session := server.manager.NewSession(codec, server.sendChanSize)
-			//处理连接
+			//处理session
 			server.handler.HandleSession(session)
 		}()
 	}
 }
 
+//获取session
 func (server *Server) GetSession(sessionID uint64) *Session {
 	return server.manager.GetSession(sessionID)
 }
 
+//停止服务
 func (server *Server) Stop() {
 	server.listener.Close()
 	server.manager.Dispose()
