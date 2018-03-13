@@ -21,7 +21,7 @@ func main() {
 	json.Register(AddReq{})
 	json.Register(AddRsp{})
 
-	//监听信息
+	//获取一个Server，定义处理session的函数
 	server, err := link.Listen("tcp", "0.0.0.0:0", json,
 		0 /* sync send */, link.HandlerFunc(serverSessionLoop))
 	checkErr(err)
@@ -34,12 +34,15 @@ func main() {
 	clientSessionLoop(client)
 }
 
-//处理方法
+//服务端的处理
 func serverSessionLoop(session *link.Session) {
+	//服务端处理所有的结果
 	for {
+		//获取请求，通过Codec去处理
 		req, err := session.Receive()
 		checkErr(err)
-		//发送处理结果
+
+		//服务端发送处理结果
 		err = session.Send(&AddRsp{
 			req.(*AddReq).A + req.(*AddReq).B,
 		})
@@ -50,6 +53,7 @@ func serverSessionLoop(session *link.Session) {
 //客户端请求的方法
 func clientSessionLoop(session *link.Session) {
 	for i := 0; i < 10; i++ {
+		//发送请求
 		err := session.Send(&AddReq{
 			i, i,
 		})

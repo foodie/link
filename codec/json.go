@@ -8,7 +8,7 @@ import (
 	"github.com/funny/link"
 )
 
-//协议基本信息
+//存储协议基本信息
 type JsonProtocol struct {
 	types map[string]reflect.Type //名字-反射类型
 	names map[reflect.Type]string //反射类型-名字
@@ -46,9 +46,9 @@ func (j *JsonProtocol) RegisterName(name string, t interface{}) {
 //通过JsonProtocol创建一个新的link.Codec
 func (j *JsonProtocol) NewCodec(rw io.ReadWriter) (link.Codec, error) {
 	codec := &jsonCodec{
-		p:       j,
-		encoder: json.NewEncoder(rw),
-		decoder: json.NewDecoder(rw),
+		p:       j,                   //协议本身
+		encoder: json.NewEncoder(rw), //对端口进行json编码
+		decoder: json.NewDecoder(rw), //对端口进行json解码
 	}
 	codec.closer, _ = rw.(io.Closer)
 	return codec, nil
@@ -66,6 +66,7 @@ type jsonOut struct {
 	Body interface{}
 }
 
+//定义个json的处理器
 type jsonCodec struct {
 	p       *JsonProtocol //协议
 	closer  io.Closer     //关闭

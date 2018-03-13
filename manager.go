@@ -4,18 +4,21 @@ import "sync"
 
 const sessionMapNum = 32
 
+//session管理器的map
 type Manager struct {
 	sessionMaps [sessionMapNum]sessionMap
 	disposeOnce sync.Once
 	disposeWait sync.WaitGroup
 }
 
+//session管理器
 type sessionMap struct {
 	sync.RWMutex
 	sessions map[uint64]*Session
 	disposed bool
 }
 
+//初始化session管理器
 func NewManager() *Manager {
 	manager := &Manager{}
 	for i := 0; i < len(manager.sessionMaps); i++ {
@@ -39,6 +42,7 @@ func (manager *Manager) Dispose() {
 	})
 }
 
+//新建一个session，加入管理
 func (manager *Manager) NewSession(codec Codec, sendChanSize int) *Session {
 	session := newSession(manager, codec, sendChanSize)
 	manager.putSession(session)

@@ -4,8 +4,10 @@ import (
 	"sync"
 )
 
+//定义基本类型
 type KEY interface{}
 
+//任意的session处理
 type Channel struct {
 	mutex    sync.RWMutex
 	sessions map[KEY]*Session

@@ -7,26 +7,31 @@ import (
 	"time"
 )
 
+//协议接口
 type Protocol interface {
 	NewCodec(rw io.ReadWriter) (Codec, error)
 }
 
+//协议方法
 type ProtocolFunc func(rw io.ReadWriter) (Codec, error)
 
 func (pf ProtocolFunc) NewCodec(rw io.ReadWriter) (Codec, error) {
 	return pf(rw)
 }
 
+//codec 接口：接收，发送，关闭
 type Codec interface {
 	Receive() (interface{}, error)
 	Send(interface{}) error
 	Close() error
 }
 
+//处理读的chan
 type ClearSendChan interface {
 	ClearSendChan(<-chan interface{})
 }
 
+//获取一个Server
 func Listen(network, address string, protocol Protocol, sendChanSize int, handler Handler) (*Server, error) {
 	listener, err := net.Listen(network, address)
 	if err != nil {
@@ -59,6 +64,7 @@ func DialTimeout(network, address string, timeout time.Duration, protocol Protoc
 	return NewSession(codec, sendChanSize), nil
 }
 
+//获取连接的net.Conn
 func Accept(listener net.Listener) (net.Conn, error) {
 	var tempDelay time.Duration
 	for {
